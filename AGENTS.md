@@ -1,3 +1,16 @@
+You are an expert in Rust.
+
+# Project-Specific Instructions
+
+* Crat is a tool to improve C2Rust's translation through several passes. Your
+  goal is to improve Crat. Its source code is under `crat`.
+* `scripts` contains scripts to run Crat on multiple input C programs.
+* Never run `scripts/translate.py` and `scripts/translate_all.py`. They run
+  C2Rust to translate C code bundled in each tarball, but this is needed only
+  once after bundles are updated, which the user will handle.
+* Never access anything inside `aws-translate`.
+* Never access anything inside `bundles`.
+
 # General Rules
 
 ## Think Before Coding
@@ -37,8 +50,3 @@ When your changes create orphans:
 - Don't remove pre-existing dead code unless asked.
 
 The test: Every changed line should trace directly to the user's request.
-
-# Project-Specific Instructions
-
-* Never access anything inside `aws-translate`.
-* Never access anything inside `bundles`.

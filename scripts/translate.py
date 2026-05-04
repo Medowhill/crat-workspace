@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 
-import json
 import os
 import shlex
 import shutil
-import subprocess
 import sys
 import tarfile
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
 
 from clang.cindex import Cursor, CursorKind, Index
 
-T = TypeVar("T")
+from utils import load_json, dump_json, load_toml, dump_toml, unique, run
 
 
 @dataclass(frozen=True)
@@ -24,35 +22,20 @@ class Artifact:
     link_args: list[str]
 
 
-def _load_json(path: Path):
-    with open(path, "r") as f:
-        return json.load(f)
-
-
-def _dump_json(data, path: Path) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
-
-
-def _unique(values: list[T]) -> list[T]:
-    return list(dict.fromkeys(values))
-
-
 def _get_target(build_dir: Path) -> list[Artifact]:
     cmake_reply_dir = build_dir / ".cmake" / "api" / "v1" / "reply"
 
     index_path = next(cmake_reply_dir.glob("index-*.json"))
-    index = _load_json(index_path)
+    index = load_json(index_path)
 
     codemodel_filename = index["reply"]["codemodel-v2"]["jsonFile"]
     codemodel_path = cmake_reply_dir / codemodel_filename
-    codemodel = _load_json(codemodel_path)
+    codemodel = load_json(codemodel_path)
     source_dir = Path(codemodel["paths"]["source"])
 
     target_entries = codemodel["configurations"][0]["targets"]
     targets = {
-        entry["id"]: _load_json(cmake_reply_dir / entry["jsonFile"])
+        entry["id"]: load_json(cmake_reply_dir / entry["jsonFile"])
         for entry in target_entries
     }
 
@@ -71,7 +54,7 @@ def _get_target(build_dir: Path) -> list[Artifact]:
             dependency_id = dependency["id"]
             if dependency_id in targets:
                 sources.extend(resolve_sources(dependency_id))
-        resolved = _unique(sources)
+        resolved = unique(sources)
         cache[target_id] = resolved
         return resolved
 
@@ -83,7 +66,7 @@ def _get_target(build_dir: Path) -> list[Artifact]:
             if fragment.get("role") == "libraries"
             and fragment["fragment"].startswith("-l")
         ]
-        return _unique(fragments)
+        return unique(fragments)
 
     artifacts: list[Artifact] = []
     for target in targets.values():
@@ -138,9 +121,7 @@ def _get_exposed_fns(
     parse_args = [
         "-x",
         "c-header",
-        *_unique(
-            [arg for command in compile_commands for arg in command_args(command)]
-        ),
+        *unique([arg for command in compile_commands for arg in command_args(command)]),
     ]
     names: set[str] = set()
 
@@ -159,88 +140,130 @@ def _get_exposed_fns(
     return sorted(names)
 
 
-def translate_with_c2rust(archive: Path, output_dir: Path) -> None:
-    output_dir = output_dir.resolve()
+def translate(tc_dir: Path) -> None:
+    project_dir = Path(__file__).resolve().parent.parent
 
-    archive_name = archive.name.removesuffix(".tar.gz")
-    workspace = output_dir / archive_name
-    if workspace.exists():
-        shutil.rmtree(workspace)
+    tc_dir = tc_dir.resolve()
+    tc_name = tc_dir.name
+    tc_p_dir_name = tc_dir.parent.name
+    tc_pp_dir_name = tc_dir.parent.parent.name
 
-    source_dir = workspace / "c"
-    source_dir.mkdir(parents=True)
-    with tarfile.open(archive) as tar:
-        tar.extractall(source_dir)
+    temp_dir = Path(
+        tempfile.mkdtemp(prefix="tmp-", suffix=f"-{tc_name}", dir=tempfile.gettempdir())
+    ).resolve()
 
-    build_dir = source_dir / "build"
-    query_dir = build_dir / ".cmake" / "api" / "v1" / "query" / "codemodel-v2"
-    preset_flag = (
-        ["--preset", "test"] if (source_dir / "CMakePresets.json").exists() else []
-    )
-    query_dir.mkdir(parents=True)
-    command = [
-        "cmake",
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-        "-S",
-        str(source_dir),
-        "-B",
-        str(build_dir),
-        "-G",
-        "Ninja",
-        *preset_flag,
-    ]
-    subprocess.run(command, check=True)
+    try:
+        workspace = temp_dir / tc_name
+        source_dir = workspace / "c"
+        source_dir.mkdir(parents=True)
 
-    commands_file = build_dir / "compile_commands.json"
-    compile_commands = _load_json(commands_file)
-    exposed_fns = _get_exposed_fns(compile_commands, source_dir)
+        archive_file = (
+            project_dir
+            / "bundles"
+            / tc_pp_dir_name
+            / tc_p_dir_name
+            / f"{tc_name}.tar.gz"
+        )
+        with tarfile.open(archive_file) as tar:
+            tar.extractall(source_dir)
 
-    targets = _get_target(build_dir)
-    sources = set([source for target in targets for source in target.sources])
-    filtered_commands = [
-        command
-        for command in compile_commands
-        if Path(str(command["file"])).resolve() in sources
-    ]
-    _dump_json(filtered_commands, commands_file)
+        build_dir = source_dir / "build"
+        query_dir = build_dir / ".cmake" / "api" / "v1" / "query" / "codemodel-v2"
+        preset_flag = (
+            ["--preset", "test"] if (source_dir / "CMakePresets.json").exists() else []
+        )
+        query_dir.mkdir(parents=True)
+        command = [
+            "cmake",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
+            "-S",
+            str(source_dir),
+            "-B",
+            str(build_dir),
+            "-G",
+            "Ninja",
+            *preset_flag,
+        ]
+        run(command)
 
-    target_name = next(
-        (target.name for target in targets if target.artifact_type == "EXECUTABLE"),
-        targets[0].name,
-    )
-    dst_dir = workspace / "translated_rust" / target_name
-    dst_dir.mkdir(parents=True)
-    command = [
-        "c2rust-transpile",
-        "-o",
-        str(dst_dir),
-        "-e",
-        str(commands_file),
-    ]
-    subprocess.run(command, check=True)
+        commands_file = build_dir / "compile_commands.json"
+        compile_commands = load_json(commands_file)
+        exposed_fns = _get_exposed_fns(compile_commands, source_dir)
 
-    link_args = sorted(set([arg for target in targets for arg in target.link_args]))
-    _add_link_args_to_build_rs(dst_dir / "build.rs", link_args)
+        targets = _get_target(build_dir)
+        sources = set([source for target in targets for source in target.sources])
+        filtered_commands = [
+            command
+            for command in compile_commands
+            if Path(str(command["file"])).resolve() in sources
+        ]
+        dump_json(filtered_commands, commands_file)
 
-    command = [
-        "cargo",
-        "build",
-    ]
-    env = {
-        **dict(os.environ),
-        "RUSTFLAGS": "-Awarnings",
-    }
-    subprocess.run(command, cwd=dst_dir, env=env, check=True)
+        target_name = next(
+            (target.name for target in targets if target.artifact_type == "EXECUTABLE"),
+            targets[0].name,
+        )
+        rust_dir = temp_dir / "rust" / target_name
+        if rust_dir.exists():
+            shutil.rmtree(rust_dir)
+        rust_dir.mkdir(parents=True)
+        command = [
+            "c2rust-transpile",
+            "-o",
+            str(rust_dir),
+            "-e",
+            str(commands_file),
+        ]
+        run(command)
+
+        link_args = sorted(set([arg for target in targets for arg in target.link_args]))
+        _add_link_args_to_build_rs(rust_dir / "build.rs", link_args)
+
+        cargo_toml_path = rust_dir / "Cargo.toml"
+        cargo_toml = load_toml(cargo_toml_path)
+        cargo_toml["lib"]["crate-type"].append("cdylib")
+        dump_toml(cargo_toml, cargo_toml_path)
+
+        dst_dir = (
+            project_dir / "c2rust-translated" / tc_pp_dir_name / tc_p_dir_name / tc_name
+        )
+        if dst_dir.exists():
+            shutil.rmtree(dst_dir)
+        shutil.copytree(rust_dir, dst_dir)
+        command = [
+            "cargo",
+            "build",
+        ]
+        env = {
+            **dict(os.environ),
+            "RUSTFLAGS": "-Awarnings",
+        }
+        run(command, cwd=dst_dir, env=env)
+
+        config_file = dst_dir / "config.toml"
+        config_data: dict[str, object] = {"c_exposed_fns": exposed_fns}
+        bin_name = next(
+            (target.name for target in targets if target.artifact_type == "EXECUTABLE"),
+            None,
+        )
+        if bin_name:
+            config_data["bin"] = {"name": bin_name}
+        dump_toml(config_data, config_file)
+
+    finally:
+        shutil.rmtree(temp_dir)
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <archive> <output_dir>")
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <test_case_dir>")
+        print(
+            f"Example: {sys.argv[0]} Test-Corpus/Public-Tests/B01_organic/bin2hex_lib"
+        )
         sys.exit(1)
 
-    archive = Path(sys.argv[1])
-    output_dir = Path(sys.argv[2])
-    translate_with_c2rust(archive, output_dir)
+    tc_dir = Path(sys.argv[1])
+    translate(tc_dir)
 
 
 if __name__ == "__main__":
