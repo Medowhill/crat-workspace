@@ -1,0 +1,6 @@
+[submodule "aws-translate"]
+	path = aws-translate
+	url = https://github.com/DARPA-TRACTOR-Program/aws-translate/
+[submodule "Test-Corpus"]
+	path = Test-Corpus
+	url = https://github.com/DARPA-TRACTOR-Program/Test-Corpus/
