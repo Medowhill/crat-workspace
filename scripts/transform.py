@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -125,6 +126,7 @@ def _transform_one(translation_dir: Path, tc_dir: Path, plugin: str) -> None:
         "RUSTFLAGS": "-Awarnings",
     }
     run(command, cwd=dst_dir, env=env)
+    shutil.rmtree(dst_dir / "target")
 
 
 def transform(

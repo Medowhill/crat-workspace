@@ -43,7 +43,7 @@ def main() -> None:
     ]
     if verbose:
         command.insert(2, "--verbose")
-    subprocess.run(command, cwd=project_dir / "Test-Corpus", check=True, stderr=subprocess.PIPE)
+    subprocess.run(command, cwd=project_dir / "Test-Corpus", stderr=subprocess.PIPE)
 
 
 if __name__ == "__main__":

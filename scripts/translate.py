@@ -257,6 +257,7 @@ def translate(tc_dir: Path) -> None:
             "RUSTFLAGS": "-Awarnings",
         }
         run(command, cwd=dst_dir, env=env)
+        shutil.rmtree(dst_dir / "target")
 
         config_file = dst_dir / "config.toml"
         config_data: dict[str, object] = {"c_exposed_fns": exposed_fns}

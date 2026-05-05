@@ -9,6 +9,7 @@ description: Use when validating Crat pass fixes with Test-Corpus test cases and
 
 - Work from the repository root.
 - Never run `scripts/translate.py` or `scripts/translate_all.py`; translations are prepared separately.
+- Run every invocation of `scripts/transform.py`, `scripts/transform_all.py`, `scripts/test.py`, and `scripts/test_all.py` **outside the sandbox** by setting `sandbox_permissions` to `require_escalated` in `exec_command`. Do this proactively instead of trying these scripts in the sandbox first.
 - Treat `transformed/` as the baseline for the current/original Crat behavior. Write fix attempts to a new directory such as `transformed-pointer-fix` or `transformed-foo-fix`.
 - Keep test outputs under a separate translation directory so comparisons against `transformed/` remain meaningful.
 - Use `-h` or `--help` on the transform/test scripts when confirming current CLI usage.
@@ -90,6 +91,8 @@ python3 scripts/test.py transformed "$TC" --verbose
 
 `test.py` copies `<translation_dir>/bin/<visibility>/<bundle>/<case>` into `<tc_dir>/translated_rust`, then invokes the Test-Corpus Rust runner for that case.
 
+Do not run `Test-Corpus/deployment/scripts/github-actions/run_rust.sh` directly to recover hidden stderr or exit-code details. `scripts/test.py` and `scripts/test_all.py` intentionally suppress that runner stderr and exit code because the hidden details are not useful for Crat validation. Use these scripts instead: they report failed vectors and summaries, and `--verbose` shows expected-versus-actual differences.
+
 ## Regression Workflow
 
 After the targeted case works:
@@ -109,19 +112,13 @@ After the targeted case works:
 3. Run all test vectors:
 
    ```bash
-   python3 scripts/test_all.py "$OUT"
-   ```
-
-   Add `--verbose` only when the extra output is needed:
-
-   ```bash
    python3 scripts/test_all.py "$OUT" --verbose
    ```
 
 4. If there are known existing failures, compare against the baseline:
 
    ```bash
-   python3 scripts/test_all.py transformed
+   python3 scripts/test_all.py transformed --verbose
    ```
 
 Use baseline results to distinguish new regressions from failures that predate the fix.
