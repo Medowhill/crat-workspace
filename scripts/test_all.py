@@ -5,12 +5,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils import print_help, should_show_help
+
 
 def _usage() -> str:
     return f"Usage: {sys.argv[0]} <translation_dir> [--verbose]"
 
 
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(_usage())
+        sys.exit(0)
+
     if len(sys.argv) not in {2, 3}:
         print(_usage())
         sys.exit(1)
@@ -39,7 +45,7 @@ def main() -> None:
     ]
     if verbose:
         command.insert(2, "--verbose")
-    subprocess.run(command, cwd=project_dir / "Test-Corpus", check=True, stderr=subprocess.PIPE)
+    subprocess.run(command, cwd=project_dir / "Test-Corpus", stderr=subprocess.PIPE)
 
 
 if __name__ == "__main__":

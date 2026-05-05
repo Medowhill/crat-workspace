@@ -4,7 +4,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from transform import build_crat, transform
-from utils import show_progress
+from utils import print_help, should_show_help, show_progress
 
 
 def transform_dir(args: tuple[Path, Path, str, bool]) -> tuple[bool, Path]:
@@ -27,6 +27,10 @@ def _usage() -> str:
 
 
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(_usage())
+        sys.exit(0)
+
     if len(sys.argv) not in {3, 4}:
         print(_usage())
         sys.exit(1)

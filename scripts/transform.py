@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from utils import run
+from utils import print_help, run, should_show_help
 
 plugins: dict[str, tuple[str, list[str]]] = {
     "expand": ("c2rust", []),
@@ -149,6 +149,10 @@ def _usage() -> str:
 
 
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(_usage())
+        sys.exit(0)
+
     if len(sys.argv) not in {4, 5}:
         print(_usage())
         sys.exit(1)

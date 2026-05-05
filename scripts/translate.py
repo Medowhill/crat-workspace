@@ -9,9 +9,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from clang.cindex import Cursor, CursorKind, Index
-
-from utils import load_json, dump_json, load_toml, dump_toml, unique, run
+from utils import (
+    dump_json,
+    dump_toml,
+    load_json,
+    load_toml,
+    print_help,
+    run,
+    should_show_help,
+    unique,
+)
 
 
 @dataclass(frozen=True)
@@ -102,6 +109,8 @@ def _add_link_args_to_build_rs(build_rs: Path, link_args: list[str]) -> None:
 def _get_exposed_fns(
     compile_commands: list[dict[str, object]], source_dir: Path
 ) -> list[str]:
+    from clang.cindex import Cursor, CursorKind, Index
+
     def preserve_option(option: str) -> bool:
         return (
             option.startswith("-D")
@@ -254,11 +263,22 @@ def translate(tc_dir: Path) -> None:
         shutil.rmtree(temp_dir)
 
 
+def _usage() -> str:
+    return f"Usage: {sys.argv[0]} <test_case_dir>"
+
+
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(
+            _usage(),
+            f"Example: {sys.argv[0]} Test-Corpus/Public-Tests/B01_organic/bin2hex_lib",
+        )
+        sys.exit(0)
+
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <test_case_dir>")
-        print(
-            f"Example: {sys.argv[0]} Test-Corpus/Public-Tests/B01_organic/bin2hex_lib"
+        print_help(
+            _usage(),
+            f"Example: {sys.argv[0]} Test-Corpus/Public-Tests/B01_organic/bin2hex_lib",
         )
         sys.exit(1)
 

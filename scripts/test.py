@@ -5,11 +5,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils import print_help, should_show_help
+
+
+def _usage() -> str:
+    return f"Usage: {sys.argv[0]} <translation_dir> <tc_dir> [--verbose]"
+
 
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(_usage())
+        sys.exit(0)
+
     verbose = len(sys.argv) == 4 and sys.argv[3] == "--verbose"
     if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and not verbose):
-        print(f"Usage: {sys.argv[0]} <translation_dir> <tc_dir> [--verbose]")
+        print(_usage())
         sys.exit(1)
 
     translation_dir = Path(sys.argv[1])

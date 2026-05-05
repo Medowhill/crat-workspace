@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import shutil
+import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from translate import translate
-from utils import show_progress
+from utils import print_help, should_show_help, show_progress
 
 
 def _translate_tc(tc_dir: Path) -> tuple[bool, Path]:
@@ -15,7 +16,19 @@ def _translate_tc(tc_dir: Path) -> tuple[bool, Path]:
     return True, tc_dir
 
 
+def _usage() -> str:
+    return f"Usage: {sys.argv[0]}"
+
+
 def main() -> None:
+    if should_show_help(sys.argv):
+        print_help(_usage())
+        sys.exit(0)
+
+    if len(sys.argv) != 1:
+        print(_usage())
+        sys.exit(1)
+
     project_dir = Path(__file__).resolve().parent.parent
     tc_root_dir = project_dir / "Test-Corpus" / "Public-Tests"
     output_dir = project_dir / "c2rust-translated"

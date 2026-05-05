@@ -1,0 +1,4 @@
+interface:
+  display_name: "Crat Test Workflow"
+  short_description: "Run Crat transforms and Test-Corpus vectors"
+  default_prompt: "Use $crat-test-workflow to validate a Crat pass fix on a Test-Corpus case."
