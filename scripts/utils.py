@@ -1,4 +1,5 @@
 import json
+import shutil
 import shlex
 import subprocess
 import sys
@@ -53,6 +54,104 @@ def dump_toml(data, path: Path) -> None:
 
 def unique(values: list[T]) -> list[T]:
     return list(dict.fromkeys(values))
+
+
+def _remove_workspace_table(cargo_toml: Path) -> None:
+    data = load_toml(cargo_toml)
+    if "workspace" not in data:
+        return
+    del data["workspace"]
+    dump_toml(data, cargo_toml)
+
+
+def _set_library_name(cargo_toml: Path, lib_name: str) -> None:
+    data = load_toml(cargo_toml)
+    package = data.get("package")
+    if not isinstance(package, dict):
+        raise ValueError(f"missing package table in {cargo_toml}")
+    package["name"] = lib_name
+
+    lib = data.get("lib")
+    if lib is None:
+        data["lib"] = {"name": lib_name, "path": "lib.rs", "crate-type": ["cdylib"]}
+    elif isinstance(lib, dict):
+        lib["name"] = lib_name
+        lib["path"] = "lib.rs"
+        lib["crate-type"] = ["cdylib"]
+    else:
+        raise ValueError(f"invalid lib table in {cargo_toml}")
+
+    data.pop("bin", None)
+    dump_toml(data, cargo_toml)
+
+
+def _update_workspace_members(cargo_toml: Path, members: list[str]) -> None:
+    data = load_toml(cargo_toml)
+    workspace = data.get("workspace")
+    if workspace is None:
+        workspace = {}
+        data["workspace"] = workspace
+    if not isinstance(workspace, dict):
+        raise ValueError(f"invalid workspace table in {cargo_toml}")
+
+    members = [*members, "."]
+    workspace["members"] = members
+    workspace["default-members"] = members
+    dump_toml(data, cargo_toml)
+
+
+def _write_cargo_config(root_dir: Path) -> None:
+    cargo_dir = root_dir / ".cargo"
+    cargo_dir.mkdir(exist_ok=True)
+    (cargo_dir / "config.toml").write_text(
+        "[target.x86_64-unknown-linux-gnu]\n"
+        'rustflags = ["-Clink-arg=-Wl,-z,lazy", "-Zplt=yes"]\n',
+        encoding="utf-8",
+    )
+
+
+def _load_lib_names(root_dir: Path) -> list[str]:
+    libs_json = root_dir / "libs.json"
+    if not libs_json.exists():
+        return []
+    lib_names = load_json(libs_json)
+    if not isinstance(lib_names, list) or not all(
+        isinstance(lib_name, str) for lib_name in lib_names
+    ):
+        raise ValueError(f"invalid library list in {libs_json}")
+    return unique(lib_names)
+
+
+def copy_translated_rust(src_dir: Path, dst_dir: Path) -> None:
+    if dst_dir.exists():
+        shutil.rmtree(dst_dir)
+    shutil.copytree(src_dir, dst_dir)
+
+    _write_cargo_config(dst_dir)
+    lib_names = _load_lib_names(dst_dir)
+    if not lib_names:
+        return
+
+    crates_dir = dst_dir / "crates"
+    if crates_dir.exists():
+        shutil.rmtree(crates_dir)
+    crates_dir.mkdir()
+
+    workspace_members: list[str] = []
+    for lib_name in lib_names:
+        lib_dir = crates_dir / lib_name
+        shutil.copytree(src_dir, lib_dir)
+
+        rust_toolchain = lib_dir / "rust-toolchain"
+        if rust_toolchain.exists():
+            rust_toolchain.unlink()
+
+        cargo_toml = lib_dir / "Cargo.toml"
+        _remove_workspace_table(cargo_toml)
+        _set_library_name(cargo_toml, lib_name)
+        workspace_members.append(f"crates/{lib_name}")
+
+    _update_workspace_members(dst_dir / "Cargo.toml", workspace_members)
 
 
 def run(command: list[str], **kwargs) -> None:

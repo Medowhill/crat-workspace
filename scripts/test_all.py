@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from utils import print_help, should_show_help
+from utils import copy_translated_rust, print_help, should_show_help
 
 
 def _usage() -> str:
@@ -35,9 +34,7 @@ def main() -> None:
         tc_dir = tc_root_dir / src_dir.relative_to(translation_dir)
         dst_dir = tc_dir / "translated_rust"
 
-        if dst_dir.exists():
-            shutil.rmtree(dst_dir)
-        shutil.copytree(src_dir, dst_dir)
+        copy_translated_rust(src_dir, dst_dir)
 
     command = [
         "./deployment/scripts/github-actions/run_rust.sh",

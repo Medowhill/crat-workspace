@@ -79,7 +79,7 @@ def _get_target(build_dir: Path) -> list[Artifact]:
     for target in targets.values():
         artifact_name = str(target["name"])
         artifact_type = str(target["type"])
-        if "sphincs_core" in artifact_name:
+        if "sphincs_core" == artifact_name:
             continue
         if artifact_type not in {"EXECUTABLE", "SHARED_LIBRARY"}:
             continue
@@ -208,9 +208,18 @@ def translate(tc_dir: Path) -> None:
         ]
         dump_json(filtered_commands, commands_file)
 
-        target_name = next(
+        bin_name = next(
             (target.name for target in targets if target.artifact_type == "EXECUTABLE"),
-            targets[0].name,
+            None,
+        )
+        target_name = bin_name or targets[0].name
+        shared_library_names = [
+            target.name for target in targets if target.artifact_type == "SHARED_LIBRARY"
+        ]
+        extra_lib_names = (
+            shared_library_names
+            if bin_name
+            else [name for name in shared_library_names if name != target_name]
         )
         rust_dir = temp_dir / "rust" / target_name
         if rust_dir.exists():
@@ -251,13 +260,10 @@ def translate(tc_dir: Path) -> None:
 
         config_file = dst_dir / "config.toml"
         config_data: dict[str, object] = {"c_exposed_fns": exposed_fns}
-        bin_name = next(
-            (target.name for target in targets if target.artifact_type == "EXECUTABLE"),
-            None,
-        )
         if bin_name:
             config_data["bin"] = {"name": bin_name}
         dump_toml(config_data, config_file)
+        dump_json(extra_lib_names, dst_dir / "libs.json")
 
     finally:
         shutil.rmtree(temp_dir)

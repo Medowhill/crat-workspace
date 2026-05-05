@@ -11,6 +11,7 @@ description: "Domain guide for working on Crat under `crat`: C2Rust translation 
 - Read `crat/src/bin/crat.rs` first when changing passes, CLI/config wiring, dependencies, or output behavior.
 - Keep changes surgical. Most passes are rustc-private AST/HIR/MIR transforms over C2Rust output, so preserve local style and invariants.
 - Crat improves C2Rust translations through multiple passes and analyses. Many passes write transformed `lib.rs`; some mutate the project tree or Cargo.toml.
+- After fixing Crat code, run validation from `crat/`: `cargo fmt`, `cargo clippy --workspace --all-targets`, and `cargo test --workspace`.
 
 ## Entrypoint
 
