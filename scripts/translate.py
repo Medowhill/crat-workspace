@@ -214,7 +214,9 @@ def translate(tc_dir: Path) -> None:
         )
         target_name = bin_name or targets[0].name
         shared_library_names = [
-            target.name for target in targets if target.artifact_type == "SHARED_LIBRARY"
+            target.name
+            for target in targets
+            if target.artifact_type == "SHARED_LIBRARY"
         ]
         extra_lib_names = (
             shared_library_names
