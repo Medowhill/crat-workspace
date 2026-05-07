@@ -1,6 +1,6 @@
 ---
 name: crat-test-workflow
-description: Use when validating Crat pass fixes with Test-Corpus test cases and vectors, especially when running scripts/transform.py, scripts/transform_all.py, scripts/test.py, or scripts/test_all.py against a new transformed output directory, comparing against the existing transformed baseline, checking dependency passes, or running full regression transformations.
+description: Use when validating Crat pass fixes with Test-Corpus test cases and vectors, especially when running scripts/transform.py, scripts/transform_all.py, scripts/test.py, or scripts/test_all.py against a new transformed output directory, comparing against the existing transformed baseline, checking unsafe feature occurrence counts, checking dependency passes, or running full regression transformations.
 ---
 
 # Crat Test Workflow
@@ -13,6 +13,7 @@ description: Use when validating Crat pass fixes with Test-Corpus test cases and
 - Treat `transformed/` as the baseline for the current/original Crat behavior. Write fix attempts to a new directory such as `transformed-pointer-fix` or `transformed-foo-fix`.
 - Keep test outputs under a separate translation directory so comparisons against `transformed/` remain meaningful.
 - Use `-h` or `--help` on the transform/test scripts when confirming current CLI usage.
+- `scripts/find_unsafe.py` and `scripts/summarize_unsafe.py` inspect the current `Test-Corpus/*/*/*/translated_rust` trees, so run them immediately after the `scripts/test_all.py` invocation whose output should be measured.
 
 ## Test-Corpus Shape
 
@@ -115,10 +116,21 @@ After the targeted case works:
    python3 scripts/test_all.py "$OUT" --verbose
    ```
 
-4. If there are known existing failures, compare against the baseline:
+4. Count unsafe feature occurrences in the tested translation:
+
+   ```bash
+   python3 scripts/find_unsafe.py
+   python3 scripts/summarize_unsafe.py
+   ```
+
+   `find_unsafe.py` writes one `unsafe.txt` under each current `translated_rust` directory. `summarize_unsafe.py` prints the total occurrence count and per-feature counts from those files. Record this summary before running another `test_all.py`, because the next test run replaces the `translated_rust` trees being inspected.
+
+5. If there are known existing failures or unsafe counts need a baseline, compare against the baseline:
 
    ```bash
    python3 scripts/test_all.py transformed --verbose
+   python3 scripts/find_unsafe.py
+   python3 scripts/summarize_unsafe.py
    ```
 
-Use baseline results to distinguish new regressions from failures that predate the fix.
+Use baseline results to distinguish new regressions from failures that predate the fix. Treat an increase in total unsafe occurrences or any per-feature unsafe occurrence count as a regression unless the change is expected and explained.
