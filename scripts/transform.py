@@ -116,17 +116,17 @@ def _transform_one(translation_dir: Path, tc_dir: Path, plugin: str) -> None:
     command.append(str(input_dir))
     subprocess.run(command, env=env, check=True)
 
-    dst_dir = output_dir / tc_name
-    command = [
-        "cargo",
-        "build",
-    ]
-    env = {
-        **dict(os.environ),
-        "RUSTFLAGS": "-Awarnings",
-    }
-    run(command, cwd=dst_dir, env=env)
-    shutil.rmtree(dst_dir / "target")
+    # dst_dir = output_dir / tc_name
+    # command = [
+    #     "cargo",
+    #     "build",
+    # ]
+    # env = {
+    #     **dict(os.environ),
+    #     "RUSTFLAGS": "-Awarnings",
+    # }
+    # run(command, cwd=dst_dir, env=env)
+    # shutil.rmtree(dst_dir / "target")
 
 
 def transform(
