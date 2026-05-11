@@ -15,7 +15,7 @@ description: "Domain guide for working on Crat under `crat`: C2Rust translation 
 
 ## Entrypoint
 
-- Transformation passes in `crat/src/bin/crat.rs`: `Expand`, `Preprocess`, `Extern`, `Unsafe`, `Unexpand`, `Split`, `Bin`, `Check`, `Format`, `Interface`, `Libc`, `OutParam`, `Lock`, `Union`, `Punning`, `Io`, `Pointer`, `Static`, `Simpl`.
+- Transformation passes in `crat/src/bin/crat.rs`: `Expand`, `Preprocess`, `Extern`, `Unsafe`, `Unexpand`, `Split`, `Bin`, `Check`, `Format`, `Interface`, `Libc`, `OutParam`, `Lock`, `Union`, `Punning`, `Enum`, `Io`, `Pointer`, `Static`, `Simpl`.
 - Analyses in `crat/src/bin/crat.rs`: `Andersen`, `OutParam`.
 - The CLI finds the crate lib path, optionally copies input to output, then calls `utils::compilation::run_compiler_on_path(&file, |tcx| ...)` for each pass.
 - Dependency side effects are centralized in the entrypoint: `bytemuck`, `num-traits`, and `tempfile` are added only when pass results request them.
@@ -54,7 +54,7 @@ description: "Domain guide for working on Crat under `crat`: C2Rust translation 
 
 - Goal: replace duplicate `extern` declarations with `use crate::...` references to local definitions.
 - Files: `crat/crates/passes/src/extern_resolver/mod.rs`, `cmake_reply.rs`; entry `extern_resolver::resolve_extern(&Config, tcx) -> String`.
-- Analysis: collects public ADTs/type aliases/functions/statics and foreign decls, groups candidates by symbol and structural type with `TypeComparator`, and treats unnamed C2Rust ADTs through disjoint sets.
+- Analysis: collects public ADTs/type aliases/functions/consts/statics and foreign decls, groups candidates by symbol and structural type with `TypeComparator`, requires duplicate consts to have equal body snippets, and treats unnamed C2Rust ADTs through disjoint sets.
 - Resolution: chooses representatives by def path, config hints, CMake source/link priority, or `choose_arbitrary`; can ignore return or param type, and can cast call args when param types differ.
 - Transformations: removes resolved duplicate items/impls/foreign items, rewrites paths to reps, inserts module-local `use crate::<def_path>;`, and uses full `crate::...` paths for unnamed types.
 - Important config: `cmake_reply_index`, `build_dir`, `source_dir`, `function/static/type_hints`, `ignore_return_type`, `ignore_param_type`.
@@ -155,6 +155,16 @@ description: "Domain guide for working on Crat under `crat`: C2Rust translation 
 - Transformations: derives needed bytemuck traits on field structs, rewrites target union definitions to `#[repr(C, align(N))] struct U { raw: [u8; size] }`, adds `new_*`, `get_*`, `get_*_ref`, `get_*_mut`, and `set_*` methods, and rewrites field expressions to method calls.
 - Output: returns code, `needs_bytemuck`, and union stats; entrypoint ensures `bytemuck` with `derive` and `min_const_generics` when needed.
 - Important types: `UnionAccessField`, `UnionMemoryInstance`, `UnionUseResult`, `UnionFieldClassification`, `FieldTypeClass`, `BytemuckDerivePlan`, `ReverseCfgResult`.
+
+## Enum
+
+- Goal: replace C2Rust integer type aliases plus typed constants that model C enums with Rust fieldless enums.
+- File: `crat/crates/passes/src/enum_replacer/mod.rs`; tests in `crat/crates/passes/src/enum_replacer/tests.rs`; entry `enum_replacer::replace_enums(tcx) -> String`.
+- Analysis: `analyze_enums` finds integer alias candidates and const variants, evaluates and sorts discriminants, models enum flow through aliases, locals, statics, function/foreign signatures, fields, pointers/refs, arrays/slices/tuples, returns, calls, method calls, struct literals, derefs, and indexing.
+- Safety: only transforms aliases with typed const variants and no reject reasons; rejects duplicate or unevaluable discriminants, integer literals/arithmetic/casts/unknown expressions assigned to enum contexts, wrong enum values, wrong enum args/returns, and compound assignments.
+- Transformations: replaces the alias with `#[repr(<int>)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)] enum`, preserves alias attrs/visibility, removes original variant consts, inserts same-visibility `use Enum::Variant` reexports, rewrites `as Enum` casts to `as <repr>`, inserts enum-to-integer casts at recorded integer-use sites, and adds `coverage_attribute` when replacements occur.
+- Interactions: generated variant reexports rely on unsafe resolver keeping used enum variant imports across modules; pointer raw-bridge defaults can materialize local fieldless enums by selecting the zero-discriminant variant.
+- Important types: `EnumAnalysis`, `EnumInfo`, `IntegerRepr`, `VariantInfo`, `DiscriminantValue`, `RejectReasonKind`, `CastSite`, `CastSiteKind`, `HirEnumTy`, `EnumTransformPlan`.
 
 ## Io
 
