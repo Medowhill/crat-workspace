@@ -24,11 +24,11 @@ def main() -> None:
     translation_dir = Path(sys.argv[1])
     tc_dir = Path(sys.argv[2])
 
-    project_dir = Path(__file__).resolve().parent.parent
     tc_dir = tc_dir.resolve()
     tc_name = tc_dir.name
     tc_p_dir_name = tc_dir.parent.name
     tc_pp_dir_name = tc_dir.parent.parent.name
+    corpus_dir = tc_dir.parent.parent.parent
 
     src_dir = translation_dir / "bin" / tc_pp_dir_name / tc_p_dir_name / tc_name
     dst_dir = tc_dir / "translated_rust"
@@ -43,7 +43,7 @@ def main() -> None:
     ]
     if verbose:
         command.insert(2, "--verbose")
-    subprocess.run(command, cwd=project_dir / "Test-Corpus", stderr=subprocess.PIPE)
+    subprocess.run(command, cwd=corpus_dir, stderr=subprocess.PIPE)
 
 
 if __name__ == "__main__":

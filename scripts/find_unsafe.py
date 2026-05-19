@@ -32,10 +32,16 @@ def main() -> None:
         sys.exit(1)
 
     project_dir = Path(__file__).resolve().parent.parent
-    tc_root_dir = project_dir / "Test-Corpus"
+    tc_root_dirs = [
+        project_dir / "Test-Corpus" / "Public-Tests",
+        project_dir / "PUBLIC-Test-Corpus" / "Hidden-Tests",
+    ]
 
     input_dirs = sorted(
-        path for path in tc_root_dir.glob("*/*/*/translated_rust") if path.is_dir()
+        path
+        for tc_root_dir in tc_root_dirs
+        for path in tc_root_dir.glob("*/*/translated_rust")
+        if path.is_dir()
     )
     total_num = len(input_dirs)
     success_num = 0

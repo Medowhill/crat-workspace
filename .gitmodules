@@ -4,3 +4,6 @@
 [submodule "Test-Corpus"]
 	path = Test-Corpus
 	url = https://github.com/DARPA-TRACTOR-Program/Test-Corpus/
+[submodule "PUBLIC-Test-Corpus"]
+	path = PUBLIC-Test-Corpus
+	url = https://github.com/DARPA-TRACTOR-Program/PUBLIC-Test-Corpus/

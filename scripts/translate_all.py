@@ -30,13 +30,19 @@ def main() -> None:
         sys.exit(1)
 
     project_dir = Path(__file__).resolve().parent.parent
-    tc_root_dir = project_dir / "Test-Corpus" / "Public-Tests"
+    tc_root_dir_1 = project_dir / "Test-Corpus" / "Public-Tests"
+    tc_root_dir_2 = project_dir / "PUBLIC-Test-Corpus" / "Hidden-Tests"
     output_dir = project_dir / "c2rust-translated"
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True)
 
-    tc_dirs = sorted(path for path in tc_root_dir.glob("*/*") if path.is_dir())
+    tc_dirs = sorted(
+        path
+        for root_dir in (tc_root_dir_1, tc_root_dir_2)
+        for path in root_dir.glob("*/*")
+        if path.is_dir()
+    )
     total_num = len(tc_dirs)
     success_num = 0
     failure_tcs: list[Path] = []

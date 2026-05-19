@@ -43,11 +43,17 @@ def main() -> None:
     run_dependencies = len(sys.argv) == 4
 
     project_dir = Path(__file__).resolve().parent.parent
-    tc_root_dir = project_dir / "Test-Corpus" / "Public-Tests"
+    tc_root_dir_1 = project_dir / "Test-Corpus" / "Public-Tests"
+    tc_root_dir_2 = project_dir / "PUBLIC-Test-Corpus" / "Hidden-Tests"
 
     build_crat()
 
-    input_dirs = sorted(path for path in tc_root_dir.glob("*/*") if path.is_dir())
+    input_dirs = sorted(
+        path
+        for root_dir in (tc_root_dir_1, tc_root_dir_2)
+        for path in root_dir.glob("*/*")
+        if path.is_dir()
+    )
     total_num = len(input_dirs)
     success_num = 0
     failure_tcs: list[Path] = []

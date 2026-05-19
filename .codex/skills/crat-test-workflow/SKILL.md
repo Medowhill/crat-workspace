@@ -1,6 +1,6 @@
 ---
 name: crat-test-workflow
-description: Use when validating Crat pass fixes with Test-Corpus test cases and vectors, especially when running scripts/transform.py, scripts/transform_all.py, scripts/test.py, or scripts/test_all.py against a new transformed output directory, comparing against the existing transformed baseline, checking unsafe feature occurrence counts, checking dependency passes, or running full regression transformations.
+description: Use when validating Crat pass fixes with Test-Corpus/Public-Tests or PUBLIC-Test-Corpus/Hidden-Tests cases and vectors, especially when running scripts/transform.py, scripts/transform_all.py, scripts/test.py, or scripts/test_all.py against a new transformed output directory, comparing against the existing transformed baseline, checking unsafe feature occurrence counts, checking dependency passes, or running full regression transformations.
 ---
 
 # Crat Test Workflow
@@ -13,11 +13,12 @@ description: Use when validating Crat pass fixes with Test-Corpus test cases and
 - Treat `transformed/` as the baseline for the current/original Crat behavior. Write fix attempts to a new directory such as `transformed-pointer-fix` or `transformed-foo-fix`.
 - Keep test outputs under a separate translation directory so comparisons against `transformed/` remain meaningful.
 - Use `-h` or `--help` on the transform/test scripts when confirming current CLI usage.
-- `scripts/find_unsafe.py` and `scripts/summarize_unsafe.py` inspect the current `Test-Corpus/*/*/*/translated_rust` trees, so run them immediately after the `scripts/test_all.py` invocation whose output should be measured.
+- `scripts/find_unsafe.py` and `scripts/summarize_unsafe.py` inspect the current `Test-Corpus/Public-Tests/*/*/translated_rust` and `PUBLIC-Test-Corpus/Hidden-Tests/*/*/translated_rust` trees, so run them immediately after the `scripts/test_all.py` invocation whose output should be measured.
 
-## Test-Corpus Shape
+## Corpus Shape
 
-Use test case paths under `Test-Corpus/<visibility>/<bundle>/<case>`, usually `Test-Corpus/Public-Tests/...`.
+Use public test case paths under `Test-Corpus/Public-Tests/<bundle>/<case>`.
+Use hidden test case paths under `PUBLIC-Test-Corpus/Hidden-Tests/<bundle>/<case>`.
 
 Each test case has:
 
@@ -49,6 +50,8 @@ When a specific pass mishandles a specific test case:
    PASS=<pass>
    ```
 
+   For hidden cases, use `TC=PUBLIC-Test-Corpus/Hidden-Tests/<bundle>/<case>`.
+
 2. After fixing the pass, run the target pass with dependencies into the new output directory:
 
    ```bash
@@ -61,7 +64,7 @@ When a specific pass mishandles a specific test case:
    diff -ru "transformed/$PASS/Public-Tests/<bundle>/<case>" "$OUT/$PASS/Public-Tests/<bundle>/<case>"
    ```
 
-   Adjust the paths for the exact pass and test case. Prefer comparing the pass output where the bug is visible, not only the final `bin` output.
+   Adjust the paths for the exact pass, visibility (`Public-Tests` or `Hidden-Tests`), and test case. Prefer comparing the pass output where the bug is visible, not only the final `bin` output.
 
 4. If fixing the same pass again, reuse the same output directory and omit `--run-dependencies` once earlier pass outputs already exist:
 
@@ -90,21 +93,21 @@ You may also run vectors against `transformed/` to learn whether the baseline al
 python3 scripts/test.py transformed "$TC" --verbose
 ```
 
-`test.py` copies `<translation_dir>/bin/<visibility>/<bundle>/<case>` into `<tc_dir>/translated_rust`, then invokes the Test-Corpus Rust runner for that case.
+`test.py` copies `<translation_dir>/bin/<visibility>/<bundle>/<case>` into `<tc_dir>/translated_rust`, then invokes that corpus's Rust runner for the case.
 
-Do not run `Test-Corpus/deployment/scripts/github-actions/run_rust.sh` directly to recover hidden stderr or exit-code details. `scripts/test.py` and `scripts/test_all.py` intentionally suppress that runner stderr and exit code because the hidden details are not useful for Crat validation. Use these scripts instead: they report failed vectors and summaries, and `--verbose` shows expected-versus-actual differences.
+Do not run `deployment/scripts/github-actions/run_rust.sh` directly from either corpus root to recover hidden stderr or exit-code details. `scripts/test.py` and `scripts/test_all.py` intentionally suppress that runner stderr and exit code because the hidden details are not useful for Crat validation. Use these scripts instead: they report failed vectors and summaries, and `--verbose` shows expected-versus-actual differences.
 
 ## Regression Workflow
 
 After the targeted case works:
 
-1. Transform all public test cases through the fixed pass:
+1. Transform all public and hidden test cases through the fixed pass:
 
    ```bash
    python3 scripts/transform_all.py "$OUT" "$PASS" --run-dependencies
    ```
 
-2. Transform all public test cases through `bin` to ensure later passes still work:
+2. Transform all public and hidden test cases through `bin` to ensure later passes still work:
 
    ```bash
    python3 scripts/transform_all.py "$OUT" bin --run-dependencies
@@ -113,7 +116,7 @@ After the targeted case works:
 3. Run all test vectors:
 
    ```bash
-   python3 scripts/test_all.py "$OUT" --verbose
+   python3 scripts/test_all.py "$OUT"
    ```
 
 4. Count unsafe feature occurrences in the tested translation:
@@ -128,7 +131,7 @@ After the targeted case works:
 5. If there are known existing failures or unsafe counts need a baseline, compare against the baseline:
 
    ```bash
-   python3 scripts/test_all.py transformed --verbose
+   python3 scripts/test_all.py transformed
    python3 scripts/find_unsafe.py
    python3 scripts/summarize_unsafe.py
    ```

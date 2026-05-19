@@ -21,10 +21,17 @@ def main() -> None:
         sys.exit(1)
 
     project_dir = Path(__file__).resolve().parent.parent
-    tc_root_dir = project_dir / "Test-Corpus"
+    tc_root_dirs = [
+        project_dir / "Test-Corpus" / "Public-Tests",
+        project_dir / "PUBLIC-Test-Corpus" / "Hidden-Tests",
+    ]
 
     counts: Counter[str] = Counter()
-    for unsafe_path in sorted(tc_root_dir.glob("*/*/*/translated_rust/unsafe.txt")):
+    for unsafe_path in sorted(
+        path
+        for tc_root_dir in tc_root_dirs
+        for path in tc_root_dir.glob("*/*/translated_rust/unsafe.txt")
+    ):
         counts.update(
             name
             for name in unsafe_path.read_text(encoding="utf-8").splitlines()
