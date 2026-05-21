@@ -175,7 +175,7 @@ def run(
     stdout_log: Path | None = None,
     stderr_log: Path | None = None,
     **kwargs,
-) -> None:
+) -> subprocess.CompletedProcess:
     result = subprocess.run(
         command,
         capture_output=True,
@@ -196,3 +196,5 @@ def run(
         print("stderr:")
         print(stderr, end="" if stderr.endswith("\n") else "\n")
         result.check_returncode()
+
+    return result

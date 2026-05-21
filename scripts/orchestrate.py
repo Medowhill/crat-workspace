@@ -85,11 +85,46 @@ def _build_parameter_sets(config_vars: dict[str, list[ParamVal]]) -> list[Parame
     return parameter_sets
 
 
+def _apply_fix(rust_dir: Path) -> None:
+    stdout_log = rust_dir / "stdout.log"
+    stderr_log = rust_dir / "stderr.log"
+
+    for _ in range(10):
+        command = ["cargo", "fix", "--allow-no-vcs"]
+        run(command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir)
+        command = ["cargo", "check"]
+        result = run(
+            command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir
+        )
+        if "run `cargo fix" not in result.stderr.decode(errors="replace"):
+            break
+
+    for _ in range(10):
+        command = ["cargo", "clippy", "--fix", "--allow-no-vcs"]
+        result = run(
+            command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir
+        )
+        if "run `cargo clippy --fix" not in result.stderr.decode(errors="replace"):
+            break
+
+
+def _format(
+    rust_dir: Path, stdout_log: Path | None = None, stderr_log: Path | None = None
+) -> None:
+    stdout_log = stdout_log if stdout_log else rust_dir / "stdout.log"
+    stderr_log = stderr_log if stderr_log else rust_dir / "stderr.log"
+    command = ["cargo", "fmt"]
+    run(command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir)
+
+
 def _translate_and_transform(workspace: Path, archive_file: Path) -> bool:
     tc_name = get_name_without_suffix(archive_file)
     try:
         translate(archive_file, workspace / "c2rust" / tc_name)
         transform(workspace, tc_name)
+        final_dir = workspace / "bin" / tc_name
+        _apply_fix(final_dir)
+        _format(final_dir)
         return True
     except:
         return False
@@ -105,6 +140,7 @@ def _translate_and_transform_with_parameters(
     try:
         translate(archive_file, workspace / name / "c2rust" / tc_name, parameters)
         transform(workspace / name, tc_name)
+        _apply_fix(final_dir)
         return (True, parameters, final_dir)
     except:
         return (False, parameters, final_dir)
@@ -203,6 +239,7 @@ def orchestrate(archive_file: Path, dst_dir: Path) -> None:
                 ]
             )
             dump_json(libs, final_dir / "libs.json")
+            _format(final_dir, stdout_log=stdout_log, stderr_log=stderr_log)
             copy_translated_rust(final_dir, dst_dir)
             shutil.copy2(stdout_log, dst_dir)
             shutil.copy2(stderr_log, dst_dir)
