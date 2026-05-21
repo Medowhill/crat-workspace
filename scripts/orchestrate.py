@@ -5,23 +5,34 @@ import sys
 import tarfile
 import tempfile
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from translate import translate
 from transform import transform
+from typing import Any
 from utils import (
+    copy_translated_rust,
     dump_json,
+    dump_toml,
     get_name_without_suffix,
     load_json,
+    load_toml,
     should_show_help,
-    show_progress,
     print_help,
     run,
+    unique,
     ParamVal,
     Parameters,
 )
 
 
-def _extract_config_vars(archive_file: Path) -> dict[str, list[ParamVal]] | None:
+@dataclass(frozen=True)
+class ConfigInfo:
+    config_vars: dict[str, list[ParamVal]]
+    presets: list[tuple[str, dict[str, str]]]
+
+
+def _extract_config_vars(archive_file: Path) -> ConfigInfo | None:
     temp_dir = Path(
         tempfile.mkdtemp(prefix="tmp-", dir=tempfile.gettempdir())
     ).resolve()
@@ -31,13 +42,38 @@ def _extract_config_vars(archive_file: Path) -> dict[str, list[ParamVal]] | None
     if not test_case_dir.exists():
         test_case_dir = temp_dir
     config_file = test_case_dir / "configuration.json"
-    config_vars = (
-        load_json(config_file)["configurable_variables"]
-        if config_file.exists()
-        else None
-    )
+    if not config_file.exists():
+        return
+
+    config_vars: dict[str, list[ParamVal]] = load_json(config_file)[
+        "configurable_variables"
+    ]
+
+    preset_file = temp_dir / "CMakePresets.json"
+    presets = []
+    if preset_file.exists():
+        preset_data = load_json(preset_file)
+        build_presets: list[dict[str, str]] = preset_data["buildPresets"]
+        configure_presets: list[dict[str, Any]] = preset_data["configurePresets"]
+
+        def extract_cache_variable(
+            build_preset: dict[str, str],
+        ) -> tuple[str, dict[str, str]]:
+            name = build_preset["name"]
+            configure_preset_name = build_preset["configurePreset"]
+            configure_preset = next(
+                preset
+                for preset in configure_presets
+                if preset["name"] == configure_preset_name
+            )
+            return (name, configure_preset["cacheVariables"])
+
+        presets = [
+            extract_cache_variable(build_preset) for build_preset in build_presets
+        ]
+
     shutil.rmtree(temp_dir)
-    return config_vars
+    return ConfigInfo(config_vars, presets)
 
 
 def _build_parameter_sets(config_vars: dict[str, list[ParamVal]]) -> list[Parameters]:
@@ -47,6 +83,16 @@ def _build_parameter_sets(config_vars: dict[str, list[ParamVal]]) -> list[Parame
             [*current, (name, value)] for current in parameter_sets for value in values
         ]
     return parameter_sets
+
+
+def _translate_and_transform(workspace: Path, archive_file: Path) -> bool:
+    tc_name = get_name_without_suffix(archive_file)
+    try:
+        translate(archive_file, workspace / "c2rust" / tc_name)
+        transform(workspace, tc_name)
+        return True
+    except:
+        return False
 
 
 def _translate_and_transform_with_parameters(
@@ -75,34 +121,29 @@ def _combine_logs(log_paths: list[Path], destination: Path) -> None:
             out.write("\n")
 
 
-def orchestrate(archive_file: Path) -> None:
+def orchestrate(archive_file: Path, dst_dir: Path) -> None:
+    tc_name = get_name_without_suffix(archive_file)
     workspace = Path(
-        # tempfile.mkdtemp(prefix="tmp-", dir=tempfile.gettempdir())
-        tempfile.mkdtemp(prefix="tmp-", dir=".")
+        tempfile.mkdtemp(prefix="tmp-", dir=tempfile.gettempdir())
     ).resolve()
 
     try:
-        config_vars = _extract_config_vars(archive_file)
-        if config_vars:
-            parameter_sets = _build_parameter_sets(config_vars)
+        config_info = _extract_config_vars(archive_file)
+        if config_info:
+            parameter_sets = _build_parameter_sets(config_info.config_vars)
             args = [
                 (workspace, archive_file, parameters) for parameters in parameter_sets
             ]
-            total_num = len(args)
             successes: list[tuple[Parameters, Path]] = []
             failures: list[Parameters] = []
-            show_progress(0, total_num)
             with ProcessPoolExecutor() as executor:
-                for done_num, (success, parameters, final_dir) in enumerate(
-                    executor.map(_translate_and_transform_with_parameters, args),
-                    start=1,
+                for success, parameters, final_dir in executor.map(
+                    _translate_and_transform_with_parameters, args
                 ):
                     if success:
                         successes.append((parameters, final_dir))
                     else:
                         failures.append(parameters)
-                    show_progress(done_num, total_num)
-            print()
 
             if failures:
                 print("Failure parameters:")
@@ -131,16 +172,51 @@ def orchestrate(archive_file: Path) -> None:
 
             command = ["crat-merge", str(json_file), str(workspace)]
             run(command, stdout_log=stdout_log, stderr_log=stderr_log)
+
+            def make_feature(name: str, val: str) -> str:
+                # if val == "ON":
+                #     return name
+                # else:
+                #     return f"{name}_{val}"
+                return f"{name}_{val}"
+
+            final_dir = workspace / tc_name
+            cargo_toml_path = final_dir / "Cargo.toml"
+            cargo_toml_data = load_toml(cargo_toml_path)
+            cargo_toml_features = cargo_toml_data["features"]
+            for name, parameters in config_info.presets:
+                features = [
+                    make_feature(name, val)
+                    for name, val in parameters.items()
+                    # if val != "OFF"
+                ]
+                cargo_toml_features[f"{name}_config"] = features
+                cargo_toml_features[f"default"] = features
+            dump_toml(cargo_toml_data, cargo_toml_path)
+
+            libs = unique(
+                [
+                    lib
+                    for _, final_dir in successes
+                    if (final_dir / "libs.json").exists()
+                    for lib in load_json(final_dir / "libs.json")
+                ]
+            )
+            dump_json(libs, final_dir / "libs.json")
+            copy_translated_rust(final_dir, dst_dir)
+            shutil.copy2(stdout_log, dst_dir)
+            shutil.copy2(stderr_log, dst_dir)
+
         else:
-            pass
+            _translate_and_transform(workspace, archive_file)
+            copy_translated_rust(workspace / "bin" / tc_name, dst_dir)
 
     finally:
-        pass
-        # shutil.rmtree(workspace)
+        shutil.rmtree(workspace)
 
 
 def _usage() -> str:
-    return f"Usage: {sys.argv[0]} <test_case_tarball>"
+    return f"Usage: {sys.argv[0]} <test_case_tarball> <dst_dir>"
 
 
 def main() -> None:
@@ -148,12 +224,13 @@ def main() -> None:
         print_help(_usage())
         sys.exit(0)
 
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print_help(_usage())
         sys.exit(1)
 
     archive_file = Path(sys.argv[1])
-    orchestrate(archive_file)
+    dst_dir = Path(sys.argv[2])
+    orchestrate(archive_file, dst_dir)
 
 
 if __name__ == "__main__":
