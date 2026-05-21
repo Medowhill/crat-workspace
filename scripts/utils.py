@@ -2,11 +2,12 @@ import json
 import shutil
 import shlex
 import subprocess
-import sys
 from pathlib import Path
 from typing import TypeVar
 
 T = TypeVar("T")
+type ParamVal = str | int | bool
+type Parameters = list[tuple[str, ParamVal]]
 
 HELP_ARGS = {"-h", "--help"}
 
@@ -50,6 +51,10 @@ def dump_toml(data, path: Path) -> None:
 
     with open(path, "w") as f:
         toml.dump(data, f)
+
+
+def get_name_without_suffix(path: Path) -> str:
+    return path.name.removesuffix("".join(path.suffixes))
 
 
 def unique(values: list[T]) -> list[T]:
@@ -154,25 +159,40 @@ def copy_translated_rust(src_dir: Path, dst_dir: Path) -> None:
     _update_workspace_members(dst_dir / "Cargo.toml", workspace_members)
 
 
-def run(command: list[str], **kwargs) -> None:
-    try:
-        subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=True,
-            **kwargs,
-        )
-    except subprocess.CalledProcessError as err:
-        print(f"Command failed with exit code {err.returncode}: {shlex.join(command)}")
-        if err.stdout:
-            print("stdout:")
-            print(err.stdout, end="" if err.stdout.endswith("\n") else "\n")
-        if err.stderr:
-            print("stderr:", file=sys.stderr)
-            print(
-                err.stderr,
-                end="" if err.stderr.endswith("\n") else "\n",
-                file=sys.stderr,
-            )
-        raise
+def _append_log(log_path: Path, command: list[str], content: str) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(f"$ {shlex.join(command)}\n")
+        if content:
+            f.write(content)
+            if not content.endswith("\n"):
+                f.write("\n")
+        f.write("\n")
+
+
+def run(
+    command: list[str],
+    stdout_log: Path | None = None,
+    stderr_log: Path | None = None,
+    **kwargs,
+) -> None:
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        **kwargs,
+    )
+    stdout = result.stdout.decode(errors="replace")
+    stderr = result.stderr.decode(errors="replace")
+
+    if stdout_log:
+        _append_log(stdout_log, command, stdout)
+    if stderr_log:
+        _append_log(stderr_log, command, stderr)
+
+    if result.returncode != 0:
+        print(f"Command failed with {result.returncode}: {shlex.join(command)}")
+        print("stdout:")
+        print(stdout, end="" if stdout.endswith("\n") else "\n")
+        print("stderr:")
+        print(stderr, end="" if stderr.endswith("\n") else "\n")
+        result.check_returncode()

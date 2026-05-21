@@ -4,13 +4,13 @@ import shutil
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from translate import translate
+from translate import translate_tc
 from utils import print_help, should_show_help, show_progress
 
 
 def _translate_tc(tc_dir: Path) -> tuple[bool, Path]:
     try:
-        translate(tc_dir)
+        translate_tc(tc_dir)
     except Exception:
         return False, tc_dir
     return True, tc_dir

@@ -79,33 +79,14 @@ def _plugin_chain(plugin: str) -> list[str]:
     return chain
 
 
-def _transform_one(translation_dir: Path, tc_dir: Path, plugin: str) -> None:
-    project_dir = Path(__file__).resolve().parent.parent
-
-    tc_dir = tc_dir.resolve()
-    tc_name = tc_dir.name
-    tc_p_dir_name = tc_dir.parent.name
-    tc_pp_dir_name = tc_dir.parent.parent.name
-
-    if plugin not in plugins:
-        raise ValueError(f"Unsupported plugin: {plugin}")
-    prev, flags = plugins[plugin]
-
-    crat = _crat_dir()
-    env = _crat_env(crat)
-    debug = "DEBUG" in os.environ
-    profile = "debug" if debug else "release"
-    crat_bin = crat / "target" / profile / "crat"
-    output_dir = translation_dir / plugin / tc_pp_dir_name / tc_p_dir_name
+def _transform_core(
+    crat_bin: str, env: dict[str, str], output_dir: Path, input_dir: Path, plugin: str
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    input_root_dir = (
-        project_dir / "c2rust-translated"
-        if prev == "c2rust"
-        else translation_dir / prev
-    )
-    input_dir = input_root_dir / tc_pp_dir_name / tc_p_dir_name / tc_name
+
+    _, flags = plugins[plugin]
     command = [
-        str(crat_bin),
+        crat_bin,
         "-o",
         str(output_dir),
         "--config",
@@ -115,22 +96,50 @@ def _transform_one(translation_dir: Path, tc_dir: Path, plugin: str) -> None:
     ]
     command.extend(flags)
     command.append(str(input_dir))
-    subprocess.run(command, env=env, check=True)
 
-    # dst_dir = output_dir / tc_name
-    # command = [
-    #     "cargo",
-    #     "build",
-    # ]
-    # env = {
-    #     **dict(os.environ),
-    #     "RUSTFLAGS": "-Awarnings",
-    # }
-    # run(command, cwd=dst_dir, env=env)
-    # shutil.rmtree(dst_dir / "target")
+    dst_dir = output_dir / input_dir.name
+    stdout_log = dst_dir / "stdout.log"
+    stderr_log = dst_dir / "stderr.log"
+    run(command, stdout_log=stdout_log, stderr_log=stderr_log, env=env)
+
+    if "CHECK_BUILD" in os.environ:
+        command = ["cargo", "build"]
+        env = {
+            **dict(os.environ),
+            "RUSTFLAGS": "-Awarnings",
+        }
+        run(command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=dst_dir, env=env)
+        shutil.rmtree(dst_dir / "target")
 
 
-def transform(
+def _transform_one_tc(translation_dir: Path, tc_dir: Path, plugin: str) -> None:
+    project_dir = Path(__file__).resolve().parent.parent
+
+    tc_dir = tc_dir.resolve()
+    tc_name = tc_dir.name
+    tc_p_dir_name = tc_dir.parent.name
+    tc_pp_dir_name = tc_dir.parent.parent.name
+
+    if plugin not in plugins:
+        raise ValueError(f"Unsupported plugin: {plugin}")
+    prev, _ = plugins[plugin]
+
+    crat = _crat_dir()
+    env = _crat_env(crat)
+    debug = "DEBUG" in os.environ
+    profile = "debug" if debug else "release"
+    crat_bin = crat / "target" / profile / "crat"
+    output_dir = translation_dir / plugin / tc_pp_dir_name / tc_p_dir_name
+    input_root_dir = (
+        project_dir / "c2rust-translated"
+        if prev == "c2rust"
+        else translation_dir / prev
+    )
+    input_dir = input_root_dir / tc_pp_dir_name / tc_p_dir_name / tc_name
+    _transform_core(str(crat_bin), env, output_dir, input_dir, plugin)
+
+
+def transform_tc(
     translation_dir: Path,
     tc_dir: Path,
     plugin: str,
@@ -141,7 +150,20 @@ def transform(
         build_crat()
 
     for plugin in _plugin_chain(plugin) if run_dependencies else [plugin]:
-        _transform_one(translation_dir, tc_dir, plugin)
+        _transform_one_tc(translation_dir, tc_dir, plugin)
+
+
+def _transform_one(workspace: Path, name: str, plugin: str) -> None:
+    prev, _ = plugins[plugin]
+    env = os.environ.copy()
+    input_dir = workspace / prev / name
+    output_dir = workspace / plugin
+    _transform_core("crat", env, output_dir, input_dir, plugin)
+
+
+def transform(workspace: Path, name: str) -> None:
+    for plugin in _plugin_chain("bin"):
+        _transform_one(workspace, name, plugin)
 
 
 def _usage() -> str:
@@ -167,7 +189,7 @@ def main() -> None:
     tc_dir = Path(sys.argv[2])
     plugin = sys.argv[3]
     run_dependencies = len(sys.argv) == 5
-    transform(
+    transform_tc(
         translation_dir,
         tc_dir,
         plugin,

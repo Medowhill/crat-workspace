@@ -3,14 +3,14 @@
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from transform import build_crat, transform
+from transform import build_crat, transform_tc
 from utils import print_help, should_show_help, show_progress
 
 
 def transform_dir(args: tuple[Path, Path, str, bool]) -> tuple[bool, Path]:
     translation_dir, tc_dir, plugin, run_dependencies = args
     try:
-        transform(
+        transform_tc(
             translation_dir,
             tc_dir,
             plugin,

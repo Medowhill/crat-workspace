@@ -12,12 +12,15 @@ from pathlib import Path
 from utils import (
     dump_json,
     dump_toml,
+    get_name_without_suffix,
     load_json,
     load_toml,
     print_help,
     run,
     should_show_help,
     unique,
+    ParamVal,
+    Parameters,
 )
 
 
@@ -149,37 +152,44 @@ def _get_exposed_fns(
     return sorted(names)
 
 
-def translate(tc_dir: Path) -> None:
-    project_dir = Path(__file__).resolve().parent.parent
-
-    tc_dir = tc_dir.resolve()
-    tc_name = tc_dir.name
-    tc_p_dir_name = tc_dir.parent.name
-    tc_pp_dir_name = tc_dir.parent.parent.name
-
+def translate(
+    archive_file: Path, dst_dir: Path, parameters: Parameters | None = None
+) -> None:
+    tc_name = get_name_without_suffix(archive_file)
     temp_dir = Path(
         tempfile.mkdtemp(prefix="tmp-", suffix=f"-{tc_name}", dir=tempfile.gettempdir())
     ).resolve()
+
+    stdout_log = temp_dir / "stdout.log"
+    stderr_log = temp_dir / "stderr.log"
 
     try:
         workspace = temp_dir / tc_name
         source_dir = workspace / "c"
         source_dir.mkdir(parents=True)
-
-        archive_file = (
-            project_dir
-            / "bundles"
-            / tc_pp_dir_name
-            / tc_p_dir_name
-            / f"{tc_name}.tar.gz"
-        )
         with tarfile.open(archive_file) as tar:
             tar.extractall(source_dir)
 
         build_dir = source_dir / "build"
         query_dir = build_dir / ".cmake" / "api" / "v1" / "query" / "codemodel-v2"
         preset_flag = (
-            ["--preset", "test"] if (source_dir / "CMakePresets.json").exists() else []
+            ["--preset", "test"]
+            if not parameters and (source_dir / "CMakePresets.json").exists()
+            else []
+        )
+
+        def flag_value(value: ParamVal) -> str:
+            if value is True:
+                return "ON"
+            elif value is False:
+                return "OFF"
+            else:
+                return str(value)
+
+        parameter_flags = (
+            [f"-D{name}={flag_value(value)}" for name, value in parameters]
+            if parameters
+            else []
         )
         query_dir.mkdir(parents=True)
         command = [
@@ -192,8 +202,9 @@ def translate(tc_dir: Path) -> None:
             "-G",
             "Ninja",
             *preset_flag,
+            *parameter_flags,
         ]
-        run(command)
+        run(command, stdout_log=stdout_log, stderr_log=stderr_log)
 
         commands_file = build_dir / "compile_commands.json"
         compile_commands = load_json(commands_file)
@@ -234,7 +245,7 @@ def translate(tc_dir: Path) -> None:
             "-e",
             str(commands_file),
         ]
-        run(command)
+        run(command, stdout_log=stdout_log, stderr_log=stderr_log)
 
         link_args = sorted(set([arg for target in targets for arg in target.link_args]))
         _add_link_args_to_build_rs(rust_dir / "build.rs", link_args)
@@ -244,22 +255,24 @@ def translate(tc_dir: Path) -> None:
         cargo_toml["lib"]["crate-type"].append("cdylib")
         dump_toml(cargo_toml, cargo_toml_path)
 
-        dst_dir = (
-            project_dir / "c2rust-translated" / tc_pp_dir_name / tc_p_dir_name / tc_name
-        )
         if dst_dir.exists():
             shutil.rmtree(dst_dir)
         shutil.copytree(rust_dir, dst_dir)
-        command = [
-            "cargo",
-            "build",
-        ]
-        env = {
-            **dict(os.environ),
-            "RUSTFLAGS": "-Awarnings",
-        }
-        run(command, cwd=dst_dir, env=env)
-        shutil.rmtree(dst_dir / "target")
+
+        if "CHECK_BUILD" in os.environ:
+            command = ["cargo", "build"]
+            env = {
+                **dict(os.environ),
+                "RUSTFLAGS": "-Awarnings",
+            }
+            run(
+                command,
+                stdout_log=stdout_log,
+                stderr_log=stderr_log,
+                cwd=dst_dir,
+                env=env,
+            )
+            shutil.rmtree(dst_dir / "target")
 
         config_file = dst_dir / "config.toml"
         config_data: dict[str, object] = {"c_exposed_fns": exposed_fns}
@@ -269,7 +282,27 @@ def translate(tc_dir: Path) -> None:
         dump_json(extra_lib_names, dst_dir / "libs.json")
 
     finally:
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(stdout_log, dst_dir)
+        shutil.copy(stderr_log, dst_dir)
         shutil.rmtree(temp_dir)
+
+
+def translate_tc(tc_dir: Path) -> None:
+    project_dir = Path(__file__).resolve().parent.parent
+
+    tc_dir = tc_dir.resolve()
+    tc_name = tc_dir.name
+    tc_p_dir_name = tc_dir.parent.name
+    tc_pp_dir_name = tc_dir.parent.parent.name
+
+    archive_file = (
+        project_dir / "bundles" / tc_pp_dir_name / tc_p_dir_name / f"{tc_name}.tar.gz"
+    )
+    dst_dir = (
+        project_dir / "c2rust-translated" / tc_pp_dir_name / tc_p_dir_name / tc_name
+    )
+    translate(archive_file, dst_dir)
 
 
 def _usage() -> str:
@@ -292,7 +325,7 @@ def main() -> None:
         sys.exit(1)
 
     tc_dir = Path(sys.argv[1])
-    translate(tc_dir)
+    translate_tc(tc_dir)
 
 
 if __name__ == "__main__":
