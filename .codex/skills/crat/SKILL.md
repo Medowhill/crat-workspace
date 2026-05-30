@@ -183,6 +183,7 @@ description: "Domain guide for working on Crat under `crat`: C2Rust translation 
 - Decision: `DecisionMaker` chooses `PtrKind::{OptRef, OptBox, Raw, OptBoxedSlice, Slice, SliceCursor}`. Raw is retained for void/file/local-struct mutable aliases, locked function pointer signatures, and unsupported ownership cases.
 - Transformations: rewrites signatures, locals, assignments, calls, returns, derefs, null checks, offsets, and free calls; inserts `SliceCursor` helpers when needed; downgrades unsupported boxes to raw.
 - Output: returns code and a `bytemuck` flag.
+- Diagnostics: set `CRAT_POINTER_DECISION_DIAGNOSTICS=summary`, `raw`, or `full` to emit pointer decision summaries/events to stderr without changing transformed output.
 
 ## Static
 

@@ -13,6 +13,7 @@ description: Use when validating Crat pass fixes with Test-Corpus/Public-Tests o
 - Treat `transformed/` as the baseline for the current/original Crat behavior. Write fix attempts to a new directory such as `transformed-pointer-fix` or `transformed-foo-fix`.
 - Keep test outputs under a separate translation directory so comparisons against `transformed/` remain meaningful.
 - Use `-h` or `--help` on the transform/test scripts when confirming current CLI usage.
+- `VERBOSE=1` makes the scripts print command stdout/stderr even on success. It is usually unnecessary, but useful with Crat stderr diagnostics such as `VERBOSE=1 CRAT_POINTER_DECISION_DIAGNOSTICS=raw ./scripts/transform.py ...`.
 - `scripts/find_unsafe.py` and `scripts/summarize_unsafe.py` inspect the current `Test-Corpus/Public-Tests/*/*/translated_rust` and `PUBLIC-Test-Corpus/Hidden-Tests/*/*/translated_rust` trees, so run them immediately after the `scripts/test_all.py` invocation whose output should be measured.
 
 ## Corpus Shape
