@@ -210,11 +210,10 @@ def orchestrate(archive_file: Path, dst_dir: Path) -> None:
             run(command, stdout_log=stdout_log, stderr_log=stderr_log)
 
             def make_feature(name: str, val: str) -> str:
-                # if val == "ON":
-                #     return name
-                # else:
-                #     return f"{name}_{val}"
-                return f"{name}_{val}"
+                if val == "ON":
+                    return name
+                else:
+                    return f"{name}_{val}"
 
             final_dir = workspace / tc_name
             cargo_toml_path = final_dir / "Cargo.toml"
@@ -224,7 +223,7 @@ def orchestrate(archive_file: Path, dst_dir: Path) -> None:
                 features = [
                     make_feature(name, val)
                     for name, val in parameters.items()
-                    # if val != "OFF"
+                    if val != "OFF"
                 ]
                 cargo_toml_features[f"{name}_config"] = features
                 cargo_toml_features[f"default"] = features
