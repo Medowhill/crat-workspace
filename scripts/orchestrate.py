@@ -85,14 +85,23 @@ def _build_parameter_sets(config_vars: dict[str, list[ParamVal]]) -> list[Parame
     return parameter_sets
 
 
+FIX_FLAGS: list[str] = [
+    "--workspace",
+    "--all-targets",
+    "--allow-no-vcs",
+    "--allow-dirty",
+]
+
+
 def _apply_fix(rust_dir: Path) -> None:
     stdout_log = rust_dir / "stdout.log"
     stderr_log = rust_dir / "stderr.log"
 
     for _ in range(10):
-        command = ["cargo", "fix", "--allow-no-vcs"]
+        command = ["cargo", "fix"]
+        command.extend(FIX_FLAGS)
         run(command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir)
-        command = ["cargo", "check"]
+        command = ["cargo", "check", "--workspace", "--all-targets"]
         result = run(
             command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir
         )
@@ -100,7 +109,8 @@ def _apply_fix(rust_dir: Path) -> None:
             break
 
     for _ in range(10):
-        command = ["cargo", "clippy", "--fix", "--allow-no-vcs"]
+        command = ["cargo", "clippy", "--fix"]
+        command.extend(FIX_FLAGS)
         result = run(
             command, stdout_log=stdout_log, stderr_log=stderr_log, cwd=rust_dir
         )
